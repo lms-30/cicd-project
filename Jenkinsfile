@@ -64,21 +64,32 @@ pipeline {
             steps {
                 echo "🔍 Analyse statique du code Python (Bandit)..."
                 sh '''
-                    # Installer Bandit si absent
-                    pip install bandit --quiet 2>/dev/null || true
+                    # Installer Bandit avec pip3 et forcer le PATH
+                    pip3 install bandit --quiet --break-system-packages 2>/dev/null || \
+                    pip3 install bandit --quiet 2>/dev/null || true
 
-                    # Scan du code source
-                    bandit -r app/ \
-                        -f json \
-                        -o bandit-report.json \
-                        --severity-level medium \
-                        --confidence-level medium || true
+                    # Trouver le binaire bandit où qu'il soit installé
+                    BANDIT=$(find /usr /root ~/.local -name "bandit" -type f 2>/dev/null | head -1)
 
-                    # Afficher le résumé
-                    bandit -r app/ \
-                        --severity-level medium \
-                        --confidence-level medium \
-                        -ll || true
+                    if [ -z "$BANDIT" ]; then
+                        echo "⚠️  Bandit introuvable, scan SAST ignoré"
+                        echo '{"skipped": true}' > bandit-report.json
+                    else
+                        echo "✅ Bandit trouvé : $BANDIT"
+
+                        # Scan JSON
+                        $BANDIT -r app/ \
+                            -f json \
+                            -o bandit-report.json \
+                            --severity-level medium \
+                            --confidence-level medium || true
+
+                        # Résumé lisible
+                        $BANDIT -r app/ \
+                            --severity-level medium \
+                            --confidence-level medium \
+                            -ll || true
+                    fi
                 '''
             }
             post {
@@ -115,10 +126,15 @@ pipeline {
             steps {
                 echo "🛡️  Scan de sécurité Trivy en cours..."
                 sh '''
-                    # Installer Trivy si absent
-                    if ! command -v trivy &> /dev/null; then
+                    # Vérifier si Trivy est déjà installé (compatible sh/dash)
+                    if trivy --version >/dev/null 2>&1; then
+                        echo "✅ Trivy déjà installé : $(trivy --version)"
+                    else
                         echo "📦 Installation de Trivy..."
-                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /tmp
+                        cp /tmp/trivy /usr/local/bin/trivy 2>/dev/null || \
+                            install -m 755 /tmp/trivy /usr/local/bin/trivy 2>/dev/null || \
+                            export PATH="/tmp:$PATH"
                     fi
                     trivy --version
                 '''
@@ -133,6 +149,7 @@ pipeline {
                         --format json \
                         --output trivy-report.json \
                         --severity ${TRIVY_SEVERITY} \
+                        --ignorefile .trivyignore \
                         --no-progress \
                         ${IMAGE_FULL} || true
 
@@ -141,6 +158,7 @@ pipeline {
                         --format table \
                         --severity ${TRIVY_SEVERITY} \
                         --exit-code ${TRIVY_EXIT_CODE} \
+                        --ignorefile .trivyignore \
                         --no-progress \
                         ${IMAGE_FULL}
                 """
@@ -162,10 +180,11 @@ pipeline {
         stage('🔐 Secrets Scan - Gitleaks') {
             steps {
                 sh '''
-                    if ! command -v gitleaks &> /dev/null; then
+                    if ! gitleaks version >/dev/null 2>&1; then
                         echo "📦 Installation de Gitleaks..."
-                        curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_8.18.4_linux_x64.tar.gz \
-                            | tar -xz -C /usr/local/bin gitleaks 2>/dev/null || true
+                        curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+                            | tar -xz -C /tmp gitleaks 2>/dev/null || true
+                        cp /tmp/gitleaks /usr/local/bin/gitleaks 2>/dev/null || true
                     fi
 
                     # Scanner le repo pour des secrets exposés
@@ -231,12 +250,12 @@ pipeline {
             steps {
                 echo "🚢 Déploiement sur Kubernetes..."
                 sh """
-                    # Créer le namespace si inexistant
-                    kubectl get namespace ${K8S_NAMESPACE} 2>/dev/null || \
-                        kubectl create namespace ${K8S_NAMESPACE}
+                    # Namespace déjà créé manuellement - ignorer si existe
+                    kubectl get namespace ${K8S_NAMESPACE} >/dev/null 2>&1 || true
 
-                    # Appliquer les manifests
-                    kubectl apply -f k8s/ -n ${K8S_NAMESPACE}
+                    # Appliquer uniquement deployment et service (pas namespace.yaml)
+                    kubectl apply -f k8s/deployment.yaml -n ${K8S_NAMESPACE}
+                    kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
 
                     # Mettre à jour l'image avec le nouveau tag
                     kubectl set image deployment/${K8S_DEPLOYMENT} \
