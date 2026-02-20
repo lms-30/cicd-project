@@ -35,7 +35,6 @@ pipeline {
         timeout(time: 30, unit: 'MINUTES')       // Timeout global
         disableConcurrentBuilds()                // Pas de builds parallèles
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timestamps()                             // Horodatage des logs
     }
 
     // --------------------------------------------------------
