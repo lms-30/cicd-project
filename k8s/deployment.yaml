@@ -1,0 +1,133 @@
+# ============================================================
+# Kubernetes Deployment — Sécurisé avec SecurityContext
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+  namespace: production
+  labels:
+    app: flask-app
+    version: "1.0"
+    managed-by: jenkins
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    description: "Application Flask CI/CD sécurisée"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0       # Zéro downtime
+
+  template:
+    metadata:
+      labels:
+        app: flask-app
+      annotations:
+        # Force le redéploiement à chaque build Jenkins
+        kubectl.kubernetes.io/restartedAt: "placeholder"
+    spec:
+
+      # --------------------------------------------------------
+      # Sécurité au niveau du Pod
+      # --------------------------------------------------------
+      securityContext:
+        runAsNonRoot: true          # Jamais root
+        runAsUser: 1001             # UID de appuser dans le Dockerfile
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault      # Profil seccomp par défaut
+
+      # Pas d'accès aux secrets d'API Kubernetes depuis les pods
+      automountServiceAccountToken: false
+
+      containers:
+        - name: flask-app
+          image: sylvain849/flask-cicd-app:latest   # Remplacer par votre username
+          imagePullPolicy: Always   # Toujours tirer la dernière image
+
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+
+          # --------------------------------------------------------
+          # Variables d'environnement (pas de secrets en clair !)
+          # --------------------------------------------------------
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: APP_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['version']
+
+          # --------------------------------------------------------
+          # Sécurité au niveau du Container
+          # --------------------------------------------------------
+          securityContext:
+            allowPrivilegeEscalation: false   # Pas d'escalade de privilèges
+            readOnlyRootFilesystem: true       # Filesystem en lecture seule
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL                          # Supprimer TOUTES les capabilities Linux
+
+          # --------------------------------------------------------
+          # Probes Kubernetes (haute disponibilité)
+          # --------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            failureThreshold: 10
+            periodSeconds: 5
+
+          # --------------------------------------------------------
+          # Limites de ressources (éviter la surconsommation)
+          # --------------------------------------------------------
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+          # --------------------------------------------------------
+          # Volumes temporaires pour les fichiers de travail
+          # --------------------------------------------------------
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+
+      # Toujours relancer en cas d'erreur
+      restartPolicy: Always

@@ -1,0 +1,49 @@
+# ============================================================
+# Kubernetes Service
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-app-service
+  namespace: production
+  labels:
+    app: flask-app
+spec:
+  type: NodePort
+  selector:
+    app: flask-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 30080
+
+---
+# ============================================================
+# Kubernetes NetworkPolicy — Restreindre le trafic réseau
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: flask-app-netpol
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: flask-app
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443    # HTTPS sortant autorisé
+        - protocol: TCP
+          port: 53     # DNS
+        - protocol: UDP
+          port: 53

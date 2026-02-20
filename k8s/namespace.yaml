@@ -1,0 +1,49 @@
+# ============================================================
+# Namespace production avec quotas de sécurité
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    name: production
+    security: restricted
+
+---
+# ============================================================
+# ResourceQuota — Limiter les ressources du namespace
+# ============================================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: production-quota
+  namespace: production
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: "1Gi"
+    limits.cpu: "4"
+    limits.memory: "2Gi"
+    pods: "10"
+
+---
+# ============================================================
+# LimitRange — Valeurs par défaut si non spécifiées
+# ============================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: production-limits
+  namespace: production
+spec:
+  limits:
+    - type: Container
+      default:
+        memory: "256Mi"
+        cpu: "500m"
+      defaultRequest:
+        memory: "64Mi"
+        cpu: "100m"
+      max:
+        memory: "512Mi"
+        cpu: "1"
