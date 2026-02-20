@@ -175,5 +175,5 @@ minikube dashboard
 7. 🛡️  Trivy Remote   → Scan image sur Docker Hub
 8. ☸️  K8s Deploy     → kubectl apply + rolling update
 9. ✅ Vérification    → Contrôle de santé post-déploiement
-666666666666666666666666666666666666666666666666666666-
 ```
+# installation et configuration docker dans le container jenkins 
