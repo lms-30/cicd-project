@@ -1,16 +1,14 @@
 # ============================================================
 # Stage 1 : Builder — installe les dépendances
 # ============================================================
-# Alpine utilise musl libc (pas de CVE-2026-0861 qui affecte glibc/Debian)
+# Flask, Gunicorn, Werkzeug sont du pur Python — pas besoin de gcc !
 FROM python:3.12-alpine AS builder
 
 WORKDIR /app
 
-# Dépendances de compilation nécessaires sur Alpine
-RUN apk add --no-cache gcc musl-dev libffi-dev
-
 COPY requirements.txt .
 
+# Pas de gcc nécessaire — toutes les dépendances ont des wheels précompilés
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
