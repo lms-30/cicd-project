@@ -10,7 +10,7 @@ pipeline {
     // --------------------------------------------------------
     environment {
         // Docker Hub — à modifier avec votre username
-        DOCKERHUB_USERNAME    = "votre_username"
+        DOCKERHUB_USERNAME    = "sylvain849"
         IMAGE_NAME            = "${DOCKERHUB_USERNAME}/flask-cicd-app"
         IMAGE_TAG             = "${BUILD_NUMBER}"
         IMAGE_FULL            = "${IMAGE_NAME}:${IMAGE_TAG}"
